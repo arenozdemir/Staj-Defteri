@@ -1,0 +1,138 @@
+public class TableHolder : MonoBehaviour
+{
+    [SerializeField] GameObject table;
+
+    public static bool tablesLocked;
+    void Awake()
+    {
+        GenerateNewTable();
+        //SetPositions(GameManager.gameManager.tableCount);
+    }
+    //table upgrade alınca bunu kullanacak
+    public void SetPositions(int tableCount, GameObject table)
+    {
+        for (int i = 0; i < tableCount; i++)
+        {
+            if (i != tableCount - 1) continue;
+            //Instantiate(table, new Vector3(transform.position.x + (i * -19), 0f, transform.position.z), Quaternion.identity, transform);
+            table.transform.position = new Vector3(transform.position.x + (i * -19), 0f, transform.position.z);
+        }
+    }
+    public void GenerateNewTable()
+    {
+        GameObject tempTable = Instantiate(table, new Vector3(0, 0, 0), Quaternion.identity, transform);
+        SetPositions(GameManager.gameManager.tableCount, tempTable);
+    }
+    public Vector3 GetNextIterationPosition(int tableCount)
+    {
+        for (int i = 0; i < tableCount + 1; i++)
+        {
+            if (i < tableCount) continue;
+            return new Vector3(transform.position.x + (i * -19), 0f, transform.position.z);
+        }
+        return Vector3.zero;
+    }
+}
+public class Table : MonoBehaviour
+{
+    #region holding chair's and book places
+    public static List<SittingPlace> sittingPlaces = new List<SittingPlace>();
+    [SerializeField] Transform[] sittingPlacesTransform;
+    public List<Book> booksOnTable = new List<Book>();
+
+    public bool inRange;
+    BookStacker bookStacker;
+    private void Awake()
+    {
+        bookStacker = FindObjectOfType<BookStacker>();
+        Transform child = transform.GetComponentInChildren<SittingPlaceManager>().transform;
+        foreach(Transform sittingPlace in child)
+        {
+            if(sittingPlace.TryGetComponent(out SittingPlace s))
+            {
+                sittingPlaces.Add(s);
+            }
+        }
+    }
+    #endregion
+    private void Start()
+    {
+        bookStacker.OnClicked += SetList;
+    }
+    private void Update()
+    {
+        TableControl();
+    }
+    private void TableControl()
+    {
+        foreach (SittingPlace sittingPlace in sittingPlaces)
+        {
+            if (sittingPlace.isSittingPlaceAvailable)
+            {
+                TableHolder.tablesLocked = false;
+                break;
+            }
+            else TableHolder.tablesLocked = true;
+        }
+    }
+    private void SetList()
+    {
+        booksOnTable.Clear();
+        for(int i =0;i <sittingPlacesTransform.Length;i++)
+        {
+            foreach(Transform book in sittingPlacesTransform[i])
+            {
+                if(book.TryGetComponent(out Book x))
+                {
+                    if (booksOnTable.Contains(x) || x.isAvailable == false) continue;
+                    else booksOnTable.Add(x);
+                }
+            }
+        }
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if(other.transform.CompareTag("Player"))
+        {
+            inRange = true;
+        }
+    }
+    private void OnTriggerExit(Collider other)
+    {
+        if(other.transform.CompareTag("Player"))
+        {
+            inRange = false;
+        }
+    }
+    
+}
+public class SittingPlace : MonoBehaviour
+{
+    public bool isSittingPlaceAvailable;
+    public bool isReserved;
+    private void Awake()
+    {
+        isSittingPlaceAvailable = true;
+        isReserved = false;
+    }
+    private void Update()
+    {
+        SittingPlaceChecker();
+    }
+    void SittingPlaceChecker()
+    {
+        foreach (Transform child in transform)
+        {
+            if (child.TryGetComponent(out Book book) || isReserved)
+            {
+                isSittingPlaceAvailable = false;
+            }
+            else isSittingPlaceAvailable = true;
+        }
+    }
+}
+public class SittingPlaceManager : MonoBehaviour
+{
+    
+}
