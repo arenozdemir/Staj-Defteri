@@ -1,0 +1,100 @@
+PlayerBase state classı:
+public abstract class PlayerBaseState
+    {
+        public virtual void EnterState(StateManagerPlayer player)
+        {
+
+        }
+        public virtual void UpdateState(StateManagerPlayer player)
+        {
+
+        }
+        public virtual void ExitState(StateManagerPlayer player)
+        {
+            
+        }
+    }
+Sırasıyla stateler:
+1-Idle(Sabit durma durumu)
+public class IdleState : PlayerBaseState
+    {
+        public override void EnterState(StateManagerPlayer player)
+        {
+            player.animator.SetBool("isRunning", false);
+        }
+
+        public override void UpdateState(StateManagerPlayer player)
+        {
+            //if (InputManager.ClickInput()) player.SwitchState(player.walkingState);
+            if (LoadingCircle.Instance.isPlayerEnterMergeBench) player.SwitchState(player.mergeBooksState);
+            if (Physics.Raycast(player.playerCamera.ScreenPointToRay(Input.mousePosition), out RaycastHit hit, 500f) && Input.GetMouseButtonDown(0))
+            {
+                player.SwitchState(player.walkingState);
+            }
+        }
+    }
+2-Walking(hareket durumu
+public class WalkingState : PlayerBaseState
+    {
+        RaycastHit hit;
+        public override void EnterState(StateManagerPlayer player)
+        {
+            player.agent.isStopped = false;
+            player.animator.SetBool("isRunning", true);
+            LoadingCircle.Instance.isPlayerEnterMergeBench = false;
+        }
+
+        public override void ExitState(StateManagerPlayer player)
+        {
+            player.agent.isStopped = true;
+            player.animator.SetBool("isRunning", false);
+        }
+
+        public override void UpdateState(StateManagerPlayer player)
+        {
+            if (LoadingCircle.Instance.isPlayerEnterMergeBench) player.SwitchState(player.mergeBooksState);
+            if (Input.GetMouseButton(0))
+            {
+                Mover(player);
+            }
+            if (Vector3.Distance(player.transform.position, hit.point) <= 0.1f)
+            {
+                player.SwitchState(player.idleState);
+            }
+        }
+
+        private void Mover(StateManagerPlayer player)
+        {
+            if (Physics.Raycast(player.playerCamera.ScreenPointToRay(Input.mousePosition), out hit, 300f, player.layer))
+            {
+                player.agent.SetDestination(hit.point);
+            }
+        }
+    })
+3-Merge book (Kitap toplama durumu)
+public class MergeBooksState : PlayerBaseState
+{
+    Ray ray;
+    public override void EnterState(StateManagerPlayer player)
+    {
+        player.animator.SetBool("isRunning", false);
+        player.MergeBook();
+    }
+
+    public override void UpdateState(StateManagerPlayer player)
+    {
+        Vector3 position = Input.mousePosition;
+        if (position.y > player.benchCamera.pixelHeight)
+        {
+            ray = player.playerCamera.ScreenPointToRay(position);
+        }
+        else ray = player.benchCamera.ScreenPointToRay(position);
+        if (Physics.Raycast(ray,out RaycastHit hit, 100f) && InputManager.ClickInput())
+        {
+            if (hit.transform.CompareTag("Ground"))
+            {
+                player.SwitchState(player.walkingState);
+            }
+        }
+    }
+}
