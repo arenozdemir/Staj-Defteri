@@ -1,0 +1,73 @@
+using newgunsystem;
+using UnityEngine;
+using static BookScriptableObject;
+
+[RequireComponent(typeof(Renderer))]
+public class Book : MonoBehaviour
+{
+    public BookScriptableObject book;
+    public bool isAvailable;
+    Gun gun;
+    Transform endPos;
+    Renderer _renderer;
+
+    private void Awake()
+    {
+        isAvailable = false;
+        _renderer = GetComponent<Renderer>();
+    }
+    public void SetBookInfo(BookScriptableObject bookType)
+    {
+        book = bookType;
+        gameObject.name = bookType.bookName;
+        _renderer.material.color = book.color;
+    }
+    public enum BookMovementState
+    {
+        Idle,
+        Moving,
+        Loading,
+        Stopped
+    }
+    public BookMovementState bookMovementState;
+    public int GetPowerOfBook()
+    {
+        int power;
+        switch (book.typeOfBook)
+        {
+            case TypeOfBook.redBook:
+                power = 10;
+                break;
+            case TypeOfBook.blueBook:
+                power = 20;
+                break;
+            case TypeOfBook.greenBook:
+                power = 30;
+                break;
+            default:
+                power = 50;
+                break;
+        }
+        return power;
+    }
+    private void Update()
+    {
+        if (bookMovementState == BookMovementState.Moving)
+        {
+            endPos = transform.parent.GetComponent<WalkingRoad>().endPosition;
+            transform.position = Vector3.MoveTowards(transform.position, endPos.position, Time.deltaTime * 8f);
+            if (Vector3.Distance(transform.position, endPos.position) < .5f)
+            {
+                bookMovementState = BookMovementState.Loading;
+            }
+        }
+        if(bookMovementState == BookMovementState.Loading)
+        {
+            gun = transform.GetComponentInParent<WalkingRoad>().gun;
+            //gun.Load(this);
+            //burada silahın load olduğu eventini aktaracağız
+            gun.gunLoading?.Invoke(this);
+            bookMovementState = BookMovementState.Stopped;
+        }
+    }
+}
