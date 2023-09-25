@@ -1,0 +1,226 @@
+using UnityEngine;
+using UnityEngine.UI;
+public class UnlockManager : MonoBehaviour
+{
+    [Header("Table")]
+    [SerializeField] TableHolder tableHolder;
+    [SerializeField] TableUnlockArea tableLine;
+    
+    [SerializeField] BookShelfHolder bookShelfHolder;
+    [SerializeField] BookShelfUnlockArea bookShelfLine;
+    BookShelfManager bookShelfManager;
+    
+    [SerializeField] Image orangeGun;
+    [SerializeField] Image purpleGun;
+    Image tempImage;
+    private void Awake()
+    {
+        tableLine.playerEnterTableUnlock += TableUnlock;
+        tableLine.processDone += TableUnlockEvent;
+        
+        bookShelfLine.playerEnterBookShelfUnlock += BookShelfUnlcok;
+        bookShelfLine.processDone += BookShelfUnlockEvent;
+    }
+    private void Start()
+    {
+        tableLine.SetUnlockArea();
+        bookShelfLine.SetUnlockArea();
+    }
+
+    #region table
+    private void TableUnlock()
+    {
+        //if (GameManager.gameManager.money < 15) return;
+        tableLine.StartUnlockProcess();
+    }
+
+    private void TableUnlockEvent()
+    {
+        GameManager.gameManager.SetTableCount();
+        tableHolder.GenerateNewTable();
+        if (GameManager.gameManager.tableCount == 5)
+        {
+            tableLine.gameObject.SetActive(false);
+            return;
+        }
+        GameManager.gameManager.money -= 15;
+        tableLine.SetUnlockArea();
+    }
+    #endregion
+
+    #region Shelf and gun
+    private void BookShelfUnlcok()
+    {
+        bookShelfLine.StartUnlockProcess();
+    }
+    private void BookShelfUnlockEvent()
+    {
+        bookShelfManager = bookShelfHolder.GetNextBookShelf();
+        if (bookShelfManager.GetGunType() == BookShelfManager.GunType.orange)
+        {
+            tempImage = orangeGun;
+            tempImage.gameObject.SetActive(true);
+        }
+        else
+        {
+            tempImage = purpleGun;
+            tempImage.gameObject.SetActive(true);
+        }
+    }
+    private void BookShelfSetGun(GameObject gun)
+    {
+        bookShelfManager.SetGun(gun);
+        bookShelfManager.gameObject.SetActive(true);
+        tempImage.gameObject.SetActive(false);
+        tempImage = null;
+        if (bookShelfHolder.BookShelfDone()) return;
+        bookShelfLine.SetUnlockArea();
+    }
+    #endregion
+}
+using enemy;
+using System;
+using System.Collections;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class TableUnlockArea : MonoBehaviour
+{
+    [SerializeField] TableHolder tableHolder;
+    [SerializeField] Image image;
+
+    public Action playerEnterTableUnlock;
+    public Action processDone;
+    
+    private bool hasDone;
+    private IEnumerator showTable;
+    private void Awake()
+    {
+        showTable = ShowTable();
+    }
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.CompareTag("Player"))
+        {
+            playerEnterTableUnlock?.Invoke();
+        }
+    }
+    private void OnTriggerExit(Collider other)
+    {
+        if (other.CompareTag("Player") && !hasDone)
+        {
+            StopCoroutine(showTable);
+            StartCoroutine(HideTable());
+        }
+    }
+    public void SetUnlockArea()
+    {
+        image.fillAmount = 1;
+        transform.localScale = new Vector3(0.1f, 0.0955974087f, 1f);
+        transform.forward = Vector3.up;
+        transform.GetComponent<BoxCollider>().size = new Vector3(100, 100, 15);
+        transform.position = tableHolder.GetNextIterationPosition(GameManager.gameManager.tableCount) + new Vector3(0, 0.01f, 0);
+        hasDone = false;
+    }
+
+    public void StartUnlockProcess()
+    {
+        StartCoroutine(ShowTable());
+    }
+    IEnumerator ShowTable()
+    {
+        while (image.fillAmount > 0)
+        {
+            image.fillAmount -= 0.005f;
+            if (image.fillAmount <= 0)
+            {
+                hasDone = true;
+                processDone?.Invoke();
+                StopCoroutine(showTable);
+                break;
+            }
+            yield return new WaitForSeconds(0.01f);
+        }
+    }
+    IEnumerator HideTable()
+    {
+        while (image.fillAmount < 1)
+        {
+            if (image.fillAmount >= 1) { break; }
+            image.fillAmount += 0.01f;
+            yield return new WaitForSeconds(0.01f);
+        }
+    }
+}
+using System;
+using System.Collections;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class BookShelfUnlockArea : MonoBehaviour
+{
+    [SerializeField] BookShelfHolder bookShelfHolder;
+    public Action playerEnterBookShelfUnlock;
+    public Action processDone;
+
+    Image image;
+    private bool hasDone;
+    private IEnumerator showBookShelf;
+    private void Awake()
+    {
+        image = GetComponent<Image>();
+        showBookShelf = ShowBookShelf();
+    }
+    public void SetUnlockArea()
+    {
+        image.fillAmount = 1;
+        transform.position = bookShelfHolder.GetNextBookShelf().transform.position + new Vector3(0, 0.01f, 0);
+    }
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.CompareTag("Player"))
+        {
+            playerEnterBookShelfUnlock?.Invoke();
+        }
+    }
+    private void OnTriggerExit(Collider other)
+    {
+        if (other.CompareTag("Player") && !hasDone)
+        {
+            StopCoroutine(showBookShelf);
+            StartCoroutine(HideBookShelf());
+        }
+    }
+    public void StartUnlockProcess()
+    {
+        StartCoroutine(ShowBookShelf());
+    }
+    IEnumerator ShowBookShelf()
+    {
+        while (image.fillAmount > 0)
+        {
+            image.fillAmount -= 0.005f;
+            if (image.fillAmount <= 0)
+            {
+                hasDone = true;
+                StopCoroutine(showBookShelf);
+                processDone?.Invoke();
+                break;
+            }
+            yield return new WaitForSeconds(0.01f);
+        }
+    }
+    IEnumerator HideBookShelf()
+    {
+        while (image.fillAmount < 1)
+        {
+            if (image.fillAmount >= 1)
+            {
+                StopCoroutine(HideBookShelf());
+                break;
+            }
+            image.fillAmount += 0.01f;
+            yield return new WaitForSeconds(0.01f);
+        }
+    }
+}
