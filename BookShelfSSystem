@@ -1,0 +1,158 @@
+using newgunsystem;
+using UnityEngine;
+
+public class BookShelfManager : MonoBehaviour
+{
+    [SerializeField] GameObject[] shelfs = new GameObject[3];
+    [SerializeField] Transform gunPos;
+    [SerializeField] GunManager gunManager;
+
+    WalkingRoad walkingRoad;
+    //GunManager gun;
+    public enum GunType
+    {
+        orange,
+        purple
+    }
+    public GunType gunType;
+    //burayı bookshelfin upgradeleri için kullanacağız daha sonra
+    private void Awake()
+    {
+        shelfs[0].gameObject.SetActive(true);
+    }
+
+    public bool GetUnlockInfo()
+    {
+        return gameObject.activeSelf;
+    }
+    
+    public GunType GetGunType()
+    {
+        return gunType;
+    }
+    public void SetGun(GameObject gun)
+    {
+        WalkingRoad walkingRoad = GetComponentInChildren<WalkingRoad>();
+        GameObject tempGun = Instantiate(gun.gameObject, transform);
+        tempGun.transform.position = gunPos.position;
+        tempGun.transform.forward = Vector3.back;
+        walkingRoad.gun = tempGun.GetComponent<Gun>();
+        gunManager.CheckListAgain(tempGun.GetComponent<Gun>());
+    }
+}
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class BookShelfHolder : MonoBehaviour
+{
+    List<BookShelfManager> bookShelfs = new List<BookShelfManager>();
+    private void Awake()
+    {
+        foreach(Transform bookShlef in transform)
+        {
+            if (bookShlef.TryGetComponent(out BookShelfManager bookShelf))
+            {
+                bookShelfs.Add(bookShelf);
+            }
+        }
+    }
+    public BookShelfManager GetNextBookShelf()
+    {
+        foreach (BookShelfManager bookShelf in bookShelfs)
+        {
+            if (bookShelf.GetUnlockInfo() == false) return bookShelf;
+        }
+        return null;
+    }
+    public bool BookShelfDone()
+    {
+        foreach(BookShelfManager booshelf in bookShelfs)
+        {
+            if (booshelf.GetUnlockInfo()) continue;
+            else
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+using System.Collections;
+using System.Collections.Generic;
+using UnityEditor;
+using UnityEngine;
+
+public class Shelf : MonoBehaviour
+{
+    [SerializeField] WalkingRoad walkingRoad;
+    [SerializeField] GameObject numuneKitap;
+    [SerializeField] float offset;
+    [SerializeField] Transform bookSpawnPoint;
+    
+    Book sizedBook;
+
+    private List<Book> books = new List<Book>();
+
+    float timer = 0;
+    int counter;
+    public void SetBooks(Book book)
+    {
+        sizedBook = book;
+        sizedBook.book.typeOfBook = book.book.typeOfBook;
+        sizedBook.transform.rotation = Quaternion.Euler(-90, 180, -90);
+        Slot oldSlot = book.transform.parent.GetComponent<Slot>();
+        oldSlot.Remove();
+        for (int i = 0; i < 5; i++)
+        {
+            Book tempObject = Instantiate(sizedBook, bookSpawnPoint.transform.position + new Vector3(0, (i * offset), 0), sizedBook.transform.rotation);
+            tempObject.transform.localScale = numuneKitap.transform.localScale;
+            tempObject.bookMovementState = Book.BookMovementState.Idle;
+            //walkingRoad.booksOnRoad.Add(tempObject);
+            tempObject.transform.parent = transform;
+            books.Add(tempObject);
+        }
+        Destroy(book.gameObject);
+        StartCoroutine(SendBooks());
+    }
+    public bool IsShelfReady()
+    {
+        return books.Count > 1 ? false : true;
+    }
+    //shelf dolumu bilgisi verilir
+    public bool IsShelfEmpty()
+    {
+        return books.Count == 0;
+    }
+    IEnumerator SendBooks()
+    {
+        while (!IsShelfEmpty())
+        {
+            timer += Time.deltaTime;
+            if (timer > 2)
+            {
+                walkingRoad.WalkBooks(books[0]);
+                books.RemoveAt(0);
+                timer = 0;
+            }
+            yield return null;
+        }
+    }
+}
+using newgunsystem;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class WalkingRoad : MonoBehaviour
+{
+    public Gun gun;
+    [SerializeField] Transform startPos;
+    public Transform endPosition;
+    public void WalkBooks(Book book)
+    {
+        book.transform.position = startPos.position;
+        book.transform.parent = transform;
+        book.bookMovementState = Book.BookMovementState.Moving;
+    }
+}
