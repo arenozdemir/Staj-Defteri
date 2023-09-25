@@ -1,0 +1,364 @@
+using enemy;
+using System.Collections.Generic;
+using System.Runtime.InteropServices.WindowsRuntime;
+using UnityEngine;
+
+namespace newgunsystem
+{
+    public class GunManager : MonoBehaviour
+    {
+        [SerializeField] List<Gun> guns = new List<Gun>();
+        [SerializeField] LayerMask enemyLayer;
+        
+        Collider[] enemys;
+        private float timer = 0;
+        public void CheckListAgain(Gun gun)
+        {
+            if (!guns.Contains(gun)) guns.Add(gun);
+            SetGunSlot(gun);
+            gun.gunBroken.AddListener(() => { BrokenSituation(gun); });
+            gun.gunLoading.AddListener((book) => { LoadOrder(gun, book); });
+        }
+        private void Awake()
+        {
+            guns.ForEach(x => SetGunSlot(x));
+            guns.ForEach(x => x.gunBroken.AddListener(() => BrokenSituation(x)));
+            guns.ForEach(x => x.gunLoading.AddListener((book) => LoadOrder(x, book)));
+        }
+        private void FindTarget(Gun gun)
+        {
+            enemys = Physics.OverlapSphere(gun.transform.position, gun.range, enemyLayer);
+            if (enemys.Length > 0)
+            {
+                gun.transform.LookAt(enemys[0].transform.position);
+                FireOrder(gun, enemys[0].GetComponent<EnemyStateManager>());
+            }
+        }
+        private void FireOrder(Gun gun, EnemyStateManager enemy)
+        {
+            timer += Time.deltaTime;
+            if(timer >= gun.speed)
+            {
+                gun.Fire(PickSlot(gun).GivePowerOfBook(), enemy, gun.bulletParticle);
+                timer = 0;
+            }
+        }
+        private void RepairOrder(Gun gun)
+        {
+            gun.Repair();
+        }
+        private void BrokenSituation(Gun gun)
+        {
+            if (gun.IsPlayerEnter())
+            {
+                RepairOrder(gun);
+            }
+        }
+        private void LoadOrder(Gun gun, Book book)
+        {
+            gun.Load(book, GetSlot(gun));
+        }
+        private void SetGunSlot(Gun gun)
+        {
+            foreach(Transform slot in gun.transform)
+            {
+                if (slot.TryGetComponent(out Slot slotComponent))
+                {
+                    gun.slots.Add(slotComponent);
+                }
+            }
+        }
+        private Slot GetSlot(Gun gun)
+        {
+            foreach (Slot slot in gun.slots)
+            {
+                if (!slot.IsFull() && slot.ammo.Count < gun.capacity / gun.slots.Count)
+                {
+                    return slot;
+                }
+                else continue;
+            }
+            return null;
+        }
+        private Slot PickSlot(Gun gun)
+        {
+            Slot tempSlot= null;
+            foreach (Slot slot in gun.slots)
+            {
+                if (slot.IsFull())
+                {
+                    if (gun.slots.IndexOf(slot) == gun.slots.Count - 1) return slot;
+                    tempSlot = slot;
+                    continue;
+                }
+                else
+                {
+                    if (slot.IsEmpty()) return tempSlot;
+                    else return slot;
+                }
+            }
+            return gun.slots[0];
+        }
+        private void Update()
+        {
+            guns.ForEach(x => FindTarget(x));
+        }
+    }
+}
+using DG.Tweening;
+using enemy;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.Events;
+
+namespace newgunsystem
+{
+    public class Gun : MonoBehaviour
+    {
+        public List<Slot> slots = new List<Slot>();
+        public float bulletPower;
+        public float speed;
+        public float range;
+        public int capacity;
+        
+        public UnityEvent gunBroken;
+        public UnityEvent<Book> gunLoading;
+
+        public ParticleSystem bulletParticle;
+        public ParticleSystem smokeParticle;
+
+        public MeshRenderer gunRenderer;
+
+        protected bool needFix;
+
+        private bool isPlayerEnter;
+        public virtual void Fire(int power, EnemyStateManager enemy, ParticleSystem bulletParticle)
+        {
+            bulletParticle.Play();
+            enemy.GetDamage(power);
+            bulletParticle.Stop();
+        }
+        public virtual void Load(Book book, Slot slot)
+        {
+            slot.TakeBook(book);
+        }
+        public virtual void Repair()
+        {
+            
+        }
+        public virtual void Broke(ParticleSystem smokeParticle)
+        {
+            //smokeParticle.gameObject.SetActive(true);
+            needFix = true;
+            smokeParticle.Play();
+            gunBroken.Invoke();
+        }
+        public bool IsPlayerEnter()
+        {
+            return isPlayerEnter;
+        }
+        private void OnTriggerEnter(Collider other)
+        {
+            if (other.CompareTag("Player"))
+            {
+                isPlayerEnter = true;
+            }
+        }
+        private void OnTriggerExit(Collider other)
+        {
+            if (other.CompareTag("Player"))
+            {
+                isPlayerEnter = false;
+            }
+        }
+        private void Update()
+        {
+            
+        }
+    }
+}
+using UnityEngine;
+namespace newgunsystem
+{
+    [CreateAssetMenu(fileName = "newGun", menuName = "Gun")]
+    public class GunObject : ScriptableObject
+    {
+        public float bulletPower;
+        public float speed;
+        public float range;
+        public int slotCount;
+        public int capacity;
+
+        public Material material;
+        public Mesh mesh;
+
+        public Vector3 size;
+        public enum GunType
+        {
+            orangeGun,
+            purpleGun,
+            blueGun
+        }
+        public GunType gunType;
+    }
+}
+using DG.Tweening;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace newgunsystem
+{
+    public class Slot : MonoBehaviour
+    {
+        public int capacity;
+
+        public List<Book> ammo = new List<Book>();
+
+        private Gun gun;
+        int counter = 0;
+        private void Start()
+        {
+            gun = GetComponentInParent<Gun>();
+            capacity = gun.capacity / gun.slots.Count;
+        }        
+        public bool IsEmpty()
+        {
+            return ammo.Count == 0;
+        }
+        public bool IsFull()
+        {
+            return ammo.Count == capacity;
+        }
+        public void TakeBook(Book book)
+        {
+            book.transform.parent = transform;
+            if (!IsContainAmmo(book)) ammo.Add(book);
+            SetPositionAndRotation(book);
+        }
+        public int GivePowerOfBook()
+        {
+            if (IsEmpty()) return 0;
+            Book book = ammo[0];
+            ammo.RemoveAt(0);
+            return book.GetPowerOfBook();
+        }
+        public bool IsContainAmmo(Book book)
+        {
+            return ammo.Contains(book);
+        }
+        private void SetPositionAndRotation(Book book)
+        {
+            book.transform.DOMove(transform.position, 2f).onComplete += SetActivateOfBook;
+            book.transform.DORotate(transform.localRotation.eulerAngles, 2f);
+        }
+        private void SetActivateOfBook()
+        {
+            if (ammo.Count <= 1) return;
+            ammo[counter].gameObject.SetActive(false);
+            counter++;
+        }
+    }
+}
+using emreozdemir;
+using enemy;
+using System.Collections;
+using UnityEngine;
+using UnityEngine.UI;
+//(Örnek silah)
+namespace newgunsystem
+{
+    [RequireComponent(typeof(MeshRenderer))]
+    public class MiniGun : Gun
+    {
+        [SerializeField] GunObject gunObject;
+        [SerializeField] StateManagerPlayer player;
+
+        [SerializeField] MeshRenderer miniGunRenderer;
+        
+        [SerializeField] ParticleSystem c_smokeParticle;
+        [SerializeField] ParticleSystem c_bulletParticle;
+
+        [SerializeField] Button btn;
+
+        IEnumerator selfRepair;
+        private void Awake()
+        {
+            gunRenderer = miniGunRenderer;
+            smokeParticle = c_smokeParticle;
+            bulletPower = gunObject.bulletPower;
+            speed = gunObject.speed;
+            range = gunObject.range;
+            capacity = gunObject.capacity;
+            selfRepair = SelfRepair();
+        }
+        private void Start()
+        {
+            speed = Mathf.Clamp(speed, 0.1f, 0.5f);
+            StartCoroutine(selfRepair);
+        }
+        public override void Fire(int power, EnemyStateManager enemy, ParticleSystem smokeParticle)
+        {
+            base.Fire(power, enemy, c_bulletParticle);
+        }
+        public override void Load(Book book, Slot slot)
+        {
+            base.Load(book, slot);
+        }
+        public override void Repair()
+        {
+            c_smokeParticle.Stop();
+            miniGunRenderer.material.color = Color.white;
+            needFix = false;
+            StartCoroutine(selfRepair);
+        }
+        public override void Broke(ParticleSystem smokeParticle)
+        {
+            StopCoroutine(selfRepair);
+            needFix = true;
+            smokeParticle.Play();
+            btn.gameObject.SetActive(true);
+        }
+        public Transform GetPlayerAttackPosition()
+        {
+            return GetComponentInChildren<PlayerAttackPosition>().transform;
+        }
+        public void GetBuff()
+        {
+            if (needFix) return;
+            speed -= 0.05f;
+            //miniGunRenderer.material.color += new Color(0.125f, 0, 0);
+            if (speed <= gunObject.speed * 0.2f)
+            {
+                Broke(c_smokeParticle);
+            }
+        }
+        public float GetDefaultSpeed()
+        {
+            return gunObject.speed;
+        }
+        private void OnTriggerEnter(Collider other)
+        {
+            if (other.CompareTag("Player"))
+            {
+                player.SwitchState(player.playerAttackState);
+            }
+        }
+        private IEnumerator SelfRepair()
+        {
+            while (true)
+            {
+                if (speed < gunObject.speed)
+                {
+                    speed += 0.01f;
+                    //gunRenderer.material.color -= new Color(0.125f, 0, 0);
+                    yield return new WaitForSeconds(0.1f);
+                }
+                else
+                {
+                    yield return null;
+                }
+            }
+        }
+    }
+}
