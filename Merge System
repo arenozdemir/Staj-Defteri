@@ -1,0 +1,266 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class SlotManager : MonoBehaviour
+{
+    [SerializeField] List<BookScriptableObject> bookScriptableObjects = new List<BookScriptableObject>();
+    [SerializeField] Book mergedBook;
+    [SerializeField] Camera PlayerCam;
+    
+    private Dictionary<BookScriptableObject.TypeOfBook, BookScriptableObject> keyValues = new Dictionary<BookScriptableObject.TypeOfBook, BookScriptableObject>();
+    
+    public Camera benchCamera;
+
+    Ray ray;
+
+    private Book book;
+    private Slot slot;
+    private Transform newSlot;
+
+    private event Action<Slot> onClickSlot;
+    private event Action onDragBook;
+    private event Action<Transform> onDropBook;
+    private void Awake()
+    {
+        keyValues.Add(BookScriptableObject.TypeOfBook.orangeBook, bookScriptableObjects[0]);
+        keyValues.Add(BookScriptableObject.TypeOfBook.yellowBook, bookScriptableObjects[1]);
+        keyValues.Add(BookScriptableObject.TypeOfBook.purpleBook, bookScriptableObjects[2]);
+    }
+    private void Start()
+    {
+        onClickSlot += OnClick;
+        onDragBook += OnDrag;
+        onDropBook += OnDrop;
+    }
+    private void Update()
+    {
+        SlotControl();
+    }
+    private void SlotControl()
+    {
+        if (LoadingCircle.Instance.isPlayerEnterMergeBench)
+        {
+            if (Physics.Raycast(benchCamera.ScreenPointToRay(Input.mousePosition), out RaycastHit hit) && Input.GetMouseButtonDown(0))
+            {
+                slot = hit.collider.GetComponent<Slot>();
+                onClickSlot?.Invoke(slot);
+            }
+            if (Input.GetMouseButton(0))
+            {
+                onDragBook?.Invoke();
+            }
+            if (Input.GetMouseButtonUp(0) && Physics.Raycast(ray, out RaycastHit newHit))
+            {
+                newSlot = newHit.collider.transform;
+                onDropBook?.Invoke(newSlot);
+            }
+        }
+    }
+    private void OnClick(Slot slot)
+    {
+        if (slot.isEmpty()) return;
+        else book = slot.books[0];
+    }
+    private void OnDrag()
+    {
+        if (book == null) return;
+        Vector3 position = Input.mousePosition;
+        //burası hangi kamerada olduğuna göre gelen rayi kontrol ediyor, benim merge book state de aynı mekaniğe ihtiyacım var
+        if (position.y > benchCamera.pixelHeight)
+        {
+            book.transform.position = PlayerCam.ScreenPointToRay(position).GetPoint(30f);
+            ray = PlayerCam.ScreenPointToRay(position);
+        }
+        else
+        {
+            book.transform.position = benchCamera.ScreenToWorldPoint(position) + new Vector3(0,-2f,0);
+            ray = benchCamera.ScreenPointToRay(position);
+        }
+    }
+    private void OnDrop(Transform newSlot)
+    {
+        if (newSlot.TryGetComponent(out Shelf shelf) && shelf.IsShelfReady())
+        {
+            shelf.SetBooks(book);
+            book = null;
+            return;
+        }
+        if(!newSlot.TryGetComponent(out Slot x))
+        {
+            book.transform.localPosition = Vector3.zero;
+            return;
+        }
+        Slot tempSlot = newSlot.GetComponent<Slot>();
+        if (tempSlot.isEmpty())
+        {
+            book.transform.parent.GetComponent<Slot>().Remove();
+            book.transform.position = newSlot.transform.position;
+            book.transform.parent = newSlot.transform;
+            tempSlot.AddBook(book.GetComponent<Book>());
+        }
+        else if (tempSlot == slot)
+        {
+            book.transform.localPosition = Vector3.zero;
+        }
+        else if(tempSlot.books[0].book.typeOfBook == book.book.typeOfBook)
+        {
+            int mergedBookEnumValue = (int)tempSlot.books[0].book.typeOfBook + 3;
+            if(mergedBookEnumValue> Enum.GetNames(typeof(BookScriptableObject.TypeOfBook)).Length - 1)
+            {
+                book.transform.localPosition = Vector3.zero;
+                return;
+            }
+            book.transform.parent.GetComponent<Slot>().Remove();
+            Destroy(tempSlot.books[0].gameObject);
+            Book newBook = Instantiate(mergedBook);
+            newBook.book = keyValues.GetValueOrDefault((BookScriptableObject.TypeOfBook)mergedBookEnumValue);
+            newBook.SetBookInfo(newBook.book);
+            newBook.transform.position = tempSlot.transform.position;
+            newBook.transform.localScale = book.transform.lossyScale;
+            newBook.transform.parent = tempSlot.transform;
+            tempSlot.books[0] = newBook;
+            Destroy(book.gameObject);
+        }
+        else
+        {
+            book.transform.localPosition = Vector3.zero;
+        }
+        book = null;
+    }
+}
+
+using Newtonsoft.Json.Bson;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using Unity.VisualScripting;
+using UnityEngine;
+
+public class Slot : MonoBehaviour
+{
+    public Book[] books = new Book[2];
+    public bool isEmpty()
+    {
+        if (books[0] == null && books[1] == null)
+        {
+            return true;
+        }
+        return false;
+    }
+    public void AddBook(Book book)
+    {
+        books[0] = book;
+    }
+    public void Remove()
+    {
+        books[0] = null;
+    }
+}
+
+using emreozdemir;
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class MergeBench : MonoBehaviour
+{
+    [SerializeField] StateManagerPlayer stateManagerPlayer;
+    [SerializeField] private Transform booksTransform;
+    List<Slot> slots = new List<Slot>();
+    private void Start()
+    {
+        stateManagerPlayer.mergingBook += StateManagerPlayer_mergingBook;
+        //burada oyun başlarken elimizdeki sloatları slots listesine kaydettik
+        foreach (Transform child in transform)
+        {
+            slots.Add(child.GetComponent<Slot>());
+        }
+    }
+    #region setting books to the merch bench
+    private void StateManagerPlayer_mergingBook()
+    {
+        List<Transform> bookTransformList = new List<Transform>();
+        foreach (Transform book in booksTransform)
+        {
+            bookTransformList.Add(book);
+        }
+        foreach (Transform book in bookTransformList)
+        {
+            StateManagerPlayer_mergingBook2(book);
+        }
+    }
+    private void StateManagerPlayer_mergingBook2(Transform book)
+    {
+        for(int i = 0; i < slots.Count; i++)
+        {
+            if (!slots[i].isEmpty()) continue;
+            book.transform.position = slots[i].transform.position;
+            slots[i].AddBook(book.GetComponent<Book>());
+            book.transform.parent = slots[i].transform;
+            return;
+        }
+    }
+    #endregion
+}
+
+sing System.Collections;
+using UnityEngine;
+using UnityEngine.UI;
+public class LoadingCircle : MonoBehaviour
+{
+    public static LoadingCircle Instance;
+    [SerializeField] private Canvas canvas;
+    [SerializeField] private Image loadingImage;
+    [SerializeField] Camera benchCam;
+    float fillValue;
+    public bool isPlayerEnterMergeBench;
+    private void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else
+        {
+            Destroy(this.gameObject);
+            return;
+        }
+        isPlayerEnterMergeBench = false;
+    }
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.gameObject.CompareTag("Player"))
+        {
+            StartCoroutine(LoadAnima());
+        }
+    }
+    private void OnTriggerExit(Collider other)
+    {
+        if (other.gameObject.CompareTag("Player"))
+        {
+            loadingImage.fillAmount = 0;
+            fillValue = 0;
+            canvas.gameObject.SetActive(true);
+            benchCam.gameObject.SetActive(false);
+            //Camera.main.cullingMask = ~(1 >> LayerMask.NameToLayer("Player"));
+            isPlayerEnterMergeBench = false;
+        }
+    }
+    IEnumerator LoadAnima()
+    {
+        loadingImage.fillAmount = 0;
+        fillValue = 1.1f;
+        while (loadingImage.fillAmount < 1f)
+        {
+            loadingImage.fillAmount = Mathf.Lerp(loadingImage.fillAmount, fillValue, Time.deltaTime);
+            yield return null;
+        }
+        canvas.gameObject.SetActive(false);
+        benchCam.gameObject.SetActive(true);
+        //Camera.main.cullingMask = ~(1 << LayerMask.NameToLayer("Player"));
+        isPlayerEnterMergeBench = true;
+        StopCoroutine(LoadAnima());
+    }
+}
